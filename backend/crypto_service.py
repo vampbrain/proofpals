@@ -1,0 +1,273 @@
+"""
+ProofPals Crypto Service
+Wrapper for Rust pp_clsag_core library
+"""
+
+import json
+import logging
+from typing import Tuple, List, Optional
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+try:
+    import pp_clsag_core
+    CRYPTO_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"Failed to import pp_clsag_core: {e}")
+    CRYPTO_AVAILABLE = False
+
+
+@dataclass
+class SignatureVerificationResult:
+    """Result of signature verification"""
+    is_valid: bool
+    key_image: Optional[str]
+    error: Optional[str] = None
+
+
+class CryptoService:
+    """Service for cryptographic operations"""
+    
+    def __init__(self):
+        if not CRYPTO_AVAILABLE:
+            raise RuntimeError(
+                "pp_clsag_core library not available. "
+                "Please build and install the Rust crypto library first."
+            )
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def verify_clsag_signature(
+        self, 
+        message: bytes, 
+        ring_pubkeys: List[str], 
+        signature_blob: str
+    ) -> SignatureVerificationResult:
+        """
+        Verify a CLSAG ring signature
+        
+        Args:
+            message: The message that was signed (bytes)
+            ring_pubkeys: List of public key hex strings in the ring
+            signature_blob: JSON string containing CLSAG signature
+            
+        Returns:
+            SignatureVerificationResult with is_valid and key_image
+        """
+        try:
+            # Parse signature blob
+            sig_data = json.loads(signature_blob)
+            
+            # Convert hex strings to bytes
+            ring_bytes = [bytes.fromhex(pk) for pk in ring_pubkeys]
+            
+            # Create CLSAGSignature object
+            signature = pp_clsag_core.CLSAGSignature(
+                key_image=bytes.fromhex(sig_data['key_image']),
+                c1=bytes.fromhex(sig_data['c1']),
+                responses=[bytes.fromhex(r) for r in sig_data['responses']]
+            )
+            
+            # Verify signature
+            is_valid = pp_clsag_core.clsag_verify(message, ring_bytes, signature)
+            
+            # Extract key image as hex string
+            key_image_hex = sig_data['key_image']
+            
+            self.logger.info(f"Signature verification: valid={is_valid}, key_image={key_image_hex[:16]}...")
+            
+            return SignatureVerificationResult(
+                is_valid=is_valid,
+                key_image=key_image_hex
+            )
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Invalid signature blob JSON: {e}")
+            return SignatureVerificationResult(
+                is_valid=False,
+                key_image=None,
+                error=f"Invalid signature format: {str(e)}"
+            )
+        except ValueError as e:
+            self.logger.error(f"Invalid hex encoding: {e}")
+            return SignatureVerificationResult(
+                is_valid=False,
+                key_image=None,
+                error=f"Invalid hex encoding: {str(e)}"
+            )
+        except Exception as e:
+            self.logger.error(f"Signature verification error: {e}", exc_info=True)
+            return SignatureVerificationResult(
+                is_valid=False,
+                key_image=None,
+                error=f"Verification failed: {str(e)}"
+            )
+    
+    def canonicalize_ring(self, pubkeys: List[str]) -> List[str]:
+        """
+        Canonicalize ring of public keys (sort lexicographically)
+        
+        Args:
+            pubkeys: List of public key hex strings
+            
+        Returns:
+            Sorted list of public key hex strings
+        """
+        try:
+            # Convert to bytes, canonicalize, convert back to hex
+            pubkey_bytes = [bytes.fromhex(pk) for pk in pubkeys]
+            canonical_bytes = pp_clsag_core.canonicalize_ring(pubkey_bytes)
+            canonical_hex = [pk.hex() for pk in canonical_bytes]
+            
+            self.logger.debug(f"Canonicalized ring of {len(pubkeys)} keys")
+            return canonical_hex
+            
+        except Exception as e:
+            self.logger.error(f"Ring canonicalization error: {e}", exc_info=True)
+            # Fallback to simple sort
+            return sorted(pubkeys)
+    
+    def verify_blind_signature(
+        self, 
+        message: bytes, 
+        signature: bytes, 
+        public_key: bytes
+    ) -> bool:
+        """
+        Verify a blind RSA signature
+        
+        Args:
+            message: The original message
+            signature: The unblinded signature
+            public_key: Server's public key
+            
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        try:
+            is_valid = pp_clsag_core.verify_blind_signature(
+                message, 
+                signature, 
+                public_key
+            )
+            
+            self.logger.info(f"Blind signature verification: valid={is_valid}")
+            return is_valid
+            
+        except Exception as e:
+            self.logger.error(f"Blind signature verification error: {e}", exc_info=True)
+            return False
+    
+    def generate_keypair(self) -> Tuple[bytes, bytes]:
+        """
+        Generate a new keypair
+        
+        Returns:
+            Tuple of (secret_key, public_key) as bytes
+        """
+        try:
+            seed = pp_clsag_core.generate_seed()
+            sk, pk = pp_clsag_core.derive_keypair(seed)
+            
+            self.logger.debug("Generated new keypair")
+            return sk, pk
+            
+        except Exception as e:
+            self.logger.error(f"Keypair generation error: {e}", exc_info=True)
+            raise
+    
+    def compute_key_image(self, secret_key: bytes, public_key: bytes, context: bytes) -> str:
+        """
+        Compute key image for a keypair
+        
+        Args:
+            secret_key: Secret key bytes
+            public_key: Public key bytes
+            context: Context bytes for domain separation
+            
+        Returns:
+            Key image as hex string
+        """
+        try:
+            key_image_bytes = pp_clsag_core.key_image(secret_key, public_key, context)
+            key_image_hex = key_image_bytes.hex()
+            
+            self.logger.debug(f"Computed key image: {key_image_hex[:16]}...")
+            return key_image_hex
+            
+        except Exception as e:
+            self.logger.error(f"Key image computation error: {e}", exc_info=True)
+            raise
+    
+    def create_canonical_message(
+        self,
+        submission_id: str,
+        genre: str,
+        vote_type: str,
+        epoch: int,
+        nonce: str
+    ) -> bytes:
+        """
+        Create canonical message format for voting
+        
+        Args:
+            submission_id: Submission identifier
+            genre: Submission genre
+            vote_type: Type of vote
+            epoch: Current epoch
+            nonce: Random nonce
+            
+        Returns:
+            Canonical message as bytes
+        """
+        try:
+            message = pp_clsag_core.canonical_message(
+                submission_id,
+                genre,
+                vote_type,
+                epoch,
+                nonce
+            )
+            
+            self.logger.debug(f"Created canonical message for submission {submission_id}")
+            return message
+            
+        except Exception as e:
+            self.logger.error(f"Canonical message creation error: {e}", exc_info=True)
+            raise
+    
+    def health_check(self) -> dict:
+        """
+        Check crypto library health
+        
+        Returns:
+            Dictionary with health status
+        """
+        try:
+            # Try basic operations
+            seed = pp_clsag_core.generate_seed()
+            sk, pk = pp_clsag_core.derive_keypair(seed)
+            
+            return {
+                "status": "healthy",
+                "library": "pp_clsag_core",
+                "version": "0.1.0",
+                "operations": ["clsag_sign", "clsag_verify", "blind_rsa", "pedersen_commit"]
+            }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+
+
+# Global crypto service instance
+_crypto_service: Optional[CryptoService] = None
+
+
+def get_crypto_service() -> CryptoService:
+    """Get global crypto service instance"""
+    global _crypto_service
+    if _crypto_service is None:
+        _crypto_service = CryptoService()
+    return _crypto_service
