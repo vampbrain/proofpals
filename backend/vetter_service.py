@@ -1,4 +1,4 @@
-backend/vetter_service.py
+
 """
 ProofPals Vetter Service
 Handles blind signature issuance for reviewer credentials
@@ -14,7 +14,7 @@ from sqlalchemy import select
 from models import Reviewer, AuditLog
 from config import settings
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 try:
     import pp_clsag_core
@@ -27,8 +27,8 @@ except ImportError:
 class VetterService:
     """Service for vetter operations and blind signature issuance"""
     
-    def _init_(self):
-        self.logger = logging.getLogger(f"{_name}.{self.class.name_}")
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         if not CRYPTO_AVAILABLE:
             raise RuntimeError("Crypto library not available")

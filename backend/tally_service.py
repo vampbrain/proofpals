@@ -9,8 +9,9 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 
-from models import Vote, Submission, Tally, SubmissionStatus, VoteType, AuditLog
+from models import Vote, Submission, Tally, SubmissionStatus, VoteType, AuditLog, Reviewer, Token
 from config import settings
+from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,153 @@ class TallyService:
             await db.commit()
         except Exception as e:
             self.logger.error(f"Error logging audit: {e}", exc_info=True)
+    
+    async def compute_weighted_tally(
+        self,
+        submission_id: int,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Compute weighted tally based on voter reputation
+        
+        Algorithm:
+        1. Get all verified votes for submission
+        2. Join with Token to get credential_hash
+        3. Join with Reviewer to get reputation_score
+        4. Weight each vote by reputation
+        5. Apply decision rules to weighted counts
+        
+        Returns:
+            Dictionary with weighted counts and decision
+        """
+        try:
+            # Step 1: Get votes with reputation scores
+            query = (
+                select(
+                    Vote.vote_type,
+                    Reviewer.reputation_score
+                )
+                .join(Token, Vote.token_id == Token.token_id)
+                .join(Reviewer, Token.credential_hash == Reviewer.credential_hash)
+                .where(
+                    Vote.submission_id == submission_id,
+                    Vote.verified == True
+                )
+            )
+            
+            result = await db.execute(query)
+            votes_with_reputation = result.all()
+            
+            # Step 2: Calculate weighted counts
+            weighted_counts = {
+                "approve": 0.0,
+                "escalate": 0.0,
+                "reject": 0.0,
+                "flag": 0.0
+            }
+            
+            total_reputation_weight = 0.0
+            
+            for vote_type, reputation in votes_with_reputation:
+                # Normalize reputation (min 1, max 200, default 100)
+                # This prevents zero or negative weights
+                normalized_rep = max(1, min(200, reputation or 100)) / 100.0
+                
+                weighted_counts[vote_type] += normalized_rep
+                total_reputation_weight += normalized_rep
+            
+            # Step 3: Calculate percentages
+            weighted_percentages = {}
+            if total_reputation_weight > 0:
+                for vote_type, weight in weighted_counts.items():
+                    weighted_percentages[vote_type] = (weight / total_reputation_weight) * 100
+            
+            # Step 4: Apply decision rules (weighted version)
+            decision = self._make_weighted_decision(weighted_counts)
+            
+            # Step 5: Get unweighted counts for comparison
+            unweighted_counts = self._get_unweighted_counts(votes_with_reputation)
+            
+            self.logger.info(
+                f"Weighted tally computed for submission {submission_id}: "
+                f"decision={decision}, total_weight={total_reputation_weight:.2f}"
+            )
+            
+            return {
+                "success": True,
+                "submission_id": submission_id,
+                "weighted_counts": weighted_counts,
+                "weighted_percentages": weighted_percentages,
+                "total_reputation_weight": total_reputation_weight,
+                "unweighted_counts": unweighted_counts,
+                "decision": decision,
+                "computed_at": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error computing weighted tally: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def _make_weighted_decision(self, weighted_counts: Dict[str, float]) -> str:
+        """
+        Apply weighted decision rules
+        
+        Rules:
+        1. If weighted_flag >= 30% of total weight → FLAGGED (escalate)
+        2. Else if weighted_approve + weighted_escalate > weighted_reject → APPROVED
+        3. Else if weighted_reject > weighted_approve + weighted_escalate → REJECTED
+        4. Else (tie) → ESCALATED for human review
+        """
+        total_weight = sum(weighted_counts.values())
+        
+        if total_weight == 0:
+            return SubmissionStatus.PENDING.value
+        
+        flag_percentage = (weighted_counts["flag"] / total_weight) * 100
+        
+        # Rule 1: High flag weight
+        if flag_percentage >= 30:
+            self.logger.info(
+                f"Decision: FLAGGED (flag weight={weighted_counts['flag']:.2f}, "
+                f"{flag_percentage:.1f}% of total)"
+            )
+            return SubmissionStatus.FLAGGED.value
+        
+        # Rule 2: Weighted approval
+        weighted_support = weighted_counts["approve"] + weighted_counts["escalate"]
+        weighted_opposition = weighted_counts["reject"]
+        
+        if weighted_support > weighted_opposition:
+            self.logger.info(
+                f"Decision: APPROVED (support={weighted_support:.2f} > "
+                f"opposition={weighted_opposition:.2f})"
+            )
+            return SubmissionStatus.APPROVED.value
+        
+        # Rule 3: Weighted rejection
+        if weighted_opposition > weighted_support:
+            self.logger.info(
+                f"Decision: REJECTED (opposition={weighted_opposition:.2f} > "
+                f"support={weighted_support:.2f})"
+            )
+            return SubmissionStatus.REJECTED.value
+        
+        # Rule 4: Tie or edge case
+        self.logger.info(
+            f"Decision: ESCALATED (tie: support={weighted_support:.2f}, "
+            f"opposition={weighted_opposition:.2f})"
+        )
+        return SubmissionStatus.ESCALATED.value
+    
+    def _get_unweighted_counts(self, votes_with_reputation) -> Dict[str, int]:
+        """Helper to get simple vote counts for comparison"""
+        counts = {"approve": 0, "escalate": 0, "reject": 0, "flag": 0}
+        for vote_type, _ in votes_with_reputation:
+            counts[vote_type] += 1
+        return counts
 
 
 # Global tally service instance

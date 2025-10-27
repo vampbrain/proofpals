@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -122,6 +122,7 @@ class TallyResponse(BaseModel):
     total_votes: Optional[int] = None
     decision: Optional[str] = None
     computed_at: Optional[str] = None
+    metadata: Optional[dict] = None
     error: Optional[str] = None
 
 
@@ -589,11 +590,211 @@ async def get_vetter_statistics(
         "statistics": stats,
         "timestamp": datetime.utcnow().isoformat()
     }
+# Add these endpoints AFTER the vetter endpoints in main.py
+
+# ============================================================================
+# Escalation Endpoints
+# ============================================================================
+
+@app.get("/api/v1/escalations", tags=["Escalation"])
+async def list_escalations(
+    current_user: CurrentUser = Depends(require_admin),
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """List pending escalations (admin only)"""
+    escalation_service = get_escalation_service()
+    escalations = await escalation_service.list_pending_escalations(db, limit)
+    
+    return {
+        "success": True,
+        "escalations": escalations,
+        "count": len(escalations)
+    }
+
+
+@app.get("/api/v1/escalations/{escalation_id}", tags=["Escalation"])
+async def get_escalation(
+    escalation_id: int,
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get escalation details (admin only)"""
+    escalation_service = get_escalation_service()
+    escalation = await escalation_service.get_escalation(escalation_id, db)
+    
+    if not escalation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Escalation not found"
+        )
+    
+    return {
+        "success": True,
+        "escalation": escalation
+    }
+
+
+@app.post("/api/v1/escalations/{escalation_id}/resolve", tags=["Escalation"])
+async def resolve_escalation(
+    escalation_id: int,
+    resolution_data: dict,
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Resolve an escalation (admin only)
+    
+    Request body:
+    {
+        "resolution": "approved|rejected|dismissed",
+        "notes": "optional resolution notes"
+    }
+    """
+    escalation_service = get_escalation_service()
+    
+    success, error = await escalation_service.resolve_escalation(
+        escalation_id=escalation_id,
+        resolver_id=current_user.id,
+        resolution=resolution_data["resolution"],
+        notes=resolution_data.get("notes"),
+        db=db
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error
+        )
+    
+    return {
+        "success": True,
+        "message": "Escalation resolved",
+        "resolution": resolution_data["resolution"],
+        "resolved_by": current_user.username
+    }
+
+
+@app.post("/api/v1/escalations/{escalation_id}/dismiss", tags=["Escalation"])
+async def dismiss_escalation(
+    escalation_id: int,
+    dismissal_data: dict,
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Dismiss an escalation as invalid (admin only)
+    
+    Request body:
+    {
+        "reason": "reason for dismissal"
+    }
+    """
+    escalation_service = get_escalation_service()
+    
+    success, error = await escalation_service.dismiss_escalation(
+        escalation_id=escalation_id,
+        dismisser_id=current_user.id,
+        reason=dismissal_data["reason"],
+        db=db
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error
+        )
+    
+    return {
+        "success": True,
+        "message": "Escalation dismissed",
+        "dismissed_by": current_user.username
+    }
+
+
+# ============================================================================
+# Monitoring Endpoints
+# ============================================================================
+
+@app.get("/api/v1/monitoring/health", tags=["Monitoring"])
+async def get_detailed_health(
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get detailed system health (admin only)"""
+    monitoring_service = get_monitoring_service()
+    health = await monitoring_service.get_system_health(db)
+    
+    return health
+
+
+@app.get("/api/v1/monitoring/statistics", tags=["Monitoring"])
+async def get_detailed_statistics(
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get detailed system statistics (admin only)"""
+    monitoring_service = get_monitoring_service()
+    stats = await monitoring_service.get_statistics(db)
+    
+    return stats
+
+
+@app.get("/api/v1/monitoring/anomalies", tags=["Monitoring"])
+async def check_anomalies(
+    current_user: CurrentUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Run anomaly detection checks (admin only)"""
+    monitoring_service = get_monitoring_service()
+    anomalies = await monitoring_service.run_anomaly_checks(db)
+    
+    return anomalies
+
+
+@app.get("/metrics", tags=["Monitoring"])
+async def prometheus_metrics(
+    current_user: CurrentUser = Depends(require_admin)
+):
+    """
+    Prometheus metrics endpoint (admin only)
+    
+    Returns metrics in Prometheus text format
+    """
+    monitoring_service = get_monitoring_service()
+    metrics = monitoring_service.metrics.get_metrics()
+    
+    # Convert to Prometheus format
+    lines = []
+    
+    # Counters
+    for name, value in metrics["counters"].items():
+        lines.append(f"# TYPE {name} counter")
+        lines.append(f"{name} {value}")
+    
+    # Gauges
+    for name, value in metrics["gauges"].items():
+        lines.append(f"# TYPE {name} gauge")
+        lines.append(f"{name} {value}")
+    
+    # Histograms (as summaries)
+    for name, hist in metrics["histograms"].items():
+        lines.append(f"# TYPE {name} summary")
+        lines.append(f"{name}_count {hist['count']}")
+        lines.append(f"{name}_sum {hist['count'] * hist['avg']}")
+        lines.append(f"{name}_min {hist['min']}")
+        lines.append(f"{name}_max {hist['max']}")
+    
+    return Response(
+        content="\n".join(lines) + "\n",
+        media_type="text/plain; version=0.0.4"
+    )
 
 @app.post("/api/v1/vote", response_model=VoteResponse)
 async def submit_vote(
     vote_request: VoteRequest,
     request: Request,
+    current_user: CurrentUser = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -700,9 +901,59 @@ async def get_tally(
         )
 
 
+@app.get("/api/v1/tally/{submission_id}/weighted", response_model=TallyResponse, tags=["Voting"])
+async def get_weighted_tally(
+    submission_id: int,
+    current_user: CurrentUser = Depends(get_optional_user),  # Optional auth
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get weighted tally for a submission (accounts for reputation)
+    
+    This endpoint computes vote weights based on voter reputation,
+    providing a more nuanced decision than simple vote counting.
+    """
+    try:
+        tally_service = get_tally_service()
+        
+        # Compute weighted tally
+        result = await tally_service.compute_weighted_tally(submission_id, db)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Weighted tally computation failed")
+            )
+        
+        return TallyResponse(
+            success=True,
+            tally_id=None,  # Weighted tally doesn't have a tally_id yet
+            counts=result["weighted_counts"],
+            total_votes=len(result.get("unweighted_counts", {})),
+            decision=result["decision"],
+            computed_at=result["computed_at"],
+            metadata={
+                "weighted": True,
+                "total_reputation_weight": result["total_reputation_weight"],
+                "weighted_percentages": result["weighted_percentages"],
+                "unweighted_counts": result["unweighted_counts"]
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_weighted_tally endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
 @app.post("/api/v1/present-credential", response_model=CredentialResponse)
 async def present_credential(
     credential_request: CredentialRequest,
+    current_user: CurrentUser = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -844,6 +1095,7 @@ async def get_submission(
 @app.post("/api/v1/rings")
 async def create_ring(
     ring_data: dict,
+    current_user: CurrentUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -926,7 +1178,7 @@ async def get_ring(
 
 
 @app.get("/api/v1/statistics")
-async def get_statistics(db: AsyncSession = Depends(get_db)):
+async def get_statistics(current_user: CurrentUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Get system statistics"""
     try:
         # Get vote service stats

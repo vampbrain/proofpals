@@ -136,6 +136,8 @@ class Reviewer(Base):
     credential_hash = Column(String(64), unique=True, nullable=False, index=True)
     profile_hash = Column(String(64), nullable=True)  # Optional opaque identifier
     credential_meta = Column(JSON, nullable=True)  # Encrypted metadata if needed
+    reputation_score = Column(Integer, default=100, nullable=False, index=True)  # Reputation for weighted voting
+    reputation_history = Column(JSON, nullable=True)  # Track reputation changes
     revoked = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     

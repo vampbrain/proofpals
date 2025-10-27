@@ -15,7 +15,7 @@ from sqlalchemy import select, func
 from models import Vote, Token, Submission, Escalation, AuditLog
 from config import settings
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 
 class MetricsCollector:
@@ -63,8 +63,8 @@ class MetricsCollector:
 class AnomalyDetector:
     """Detects anomalous patterns in voting and submissions"""
     
-    def _init_(self):
-        self.logger = logging.getLogger(f"{_name}.{self.class.name_}")
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.alert_history = deque(maxlen=100)
         
     async def detect_flag_burst(
@@ -286,8 +286,8 @@ class AnomalyDetector:
 class MonitoringService:
     """Main monitoring service coordinating all monitoring activities"""
     
-    def _init_(self):
-        self.logger = logging.getLogger(f"{_name}.{self.class.name_}")
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.metrics = MetricsCollector()
         self.anomaly_detector = AnomalyDetector()
         self.start_time = time.time()

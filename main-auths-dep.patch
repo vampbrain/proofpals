@@ -1,0 +1,51 @@
+*** Begin Patch
+*** Update File: backend/main.py
+@@
+-@app.post("/api/v1/vote", response_model=VoteResponse)
+-async def submit_vote(
+-    vote_request: VoteRequest,
+-    request: Request,
+-    db: AsyncSession = Depends(get_db)
+-):
++@app.post("/api/v1/vote", response_model=VoteResponse)
++async def submit_vote(
++    vote_request: VoteRequest,
++    request: Request,
++    current_user: CurrentUser = Depends(require_reviewer),  # reviewer auth
++    db: AsyncSession = Depends(get_db)
++):
+@@
+-@app.post("/api/v1/rings")
+-async def create_ring(
+-    ring_data: dict,
+-    db: AsyncSession = Depends(get_db)
+-):
++@app.post("/api/v1/rings")
++async def create_ring(
++    ring_data: dict,
++    current_user: CurrentUser = Depends(require_admin),  # admin auth
++    db: AsyncSession = Depends(get_db)
++):
+@@
+-@app.post("/api/v1/present-credential", response_model=CredentialResponse)
+-async def present_credential(
+-    credential_request: CredentialRequest,
+-    db: AsyncSession = Depends(get_db)
+-):
++@app.post("/api/v1/present-credential", response_model=CredentialResponse)
++async def present_credential(
++    credential_request: CredentialRequest,
++    current_user: CurrentUser = Depends(require_reviewer),  # reviewer auth
++    db: AsyncSession = Depends(get_db)
++):
+@@
+-@app.get("/api/v1/statistics")
+-async def get_statistics(db: AsyncSession = Depends(get_db)):
+-    """Get system statistics"""
++@app.get("/api/v1/statistics")
++async def get_statistics(
++    current_user: CurrentUser = Depends(require_admin),  # admin auth
++    db: AsyncSession = Depends(get_db)
++):
++    """Get system statistics"""
+*** End Patch
