@@ -47,5 +47,10 @@ python-dotenv==1.0.0
 click==8.1.7
 rich==13.7.0
 
+# Authentication and security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
 # Crypto library (installed separately via maturin)
 # pp_clsag_core - see SETUP.md for installation instructions
