@@ -1,2 +1,5 @@
 pp/
 backend/__pycache__/
+backend/schemas/__pycache__/
+backend/tests/__pycache__/
+backend/middleware/__pycache__/
