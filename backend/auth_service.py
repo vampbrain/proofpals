@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import hashlib
 import secrets
 import jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel, EmailStr, Field
@@ -18,8 +18,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Using bcrypt directly instead of passlib
 
 
 # ============================================================================
@@ -79,6 +78,7 @@ class AuthService:
         self.secret_key = settings.SECRET_KEY
         self.algorithm = settings.ALGORITHM
         self.access_token_expire = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
     
     # ========================================================================
     # Password Hashing
@@ -94,7 +94,14 @@ class AuthService:
         Returns:
             Hashed password
         """
-        return pwd_context.hash(password)
+        # Convert to bytes if it's a string
+        if isinstance(password, str):
+            password = password.encode('utf-8')
+        # Generate salt and hash
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password, salt)
+        # Return as string
+        return hashed.decode('utf-8')
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """
@@ -108,7 +115,12 @@ class AuthService:
             True if password matches
         """
         try:
-            return pwd_context.verify(plain_password, hashed_password)
+            # Convert to bytes
+            if isinstance(plain_password, str):
+                plain_password = plain_password.encode('utf-8')
+            if isinstance(hashed_password, str):
+                hashed_password = hashed_password.encode('utf-8')
+            return bcrypt.checkpw(plain_password, hashed_password)
         except Exception as e:
             self.logger.error(f"Password verification error: {e}")
             return False
