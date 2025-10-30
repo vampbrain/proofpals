@@ -1,0 +1,122 @@
+{
+  "timestamp": "2025-10-30T11:14:59.608525",
+  "results": {
+    "crypto_operations": {
+      "key_generation": {
+        "mean_ms": 0.03656000000773929,
+        "median_ms": 0.035499997466104105,
+        "min_ms": 0.0351999988197349,
+        "max_ms": 0.11539999832166359,
+        "stdev_ms": 0.008046932851290045,
+        "p95_ms": 0.03869999636663124
+      },
+      "signature_generation_ring5": {
+        "mean_ms": 0.9616359998472035,
+        "median_ms": 0.7789000010234304,
+        "min_ms": 0.6783999997423962,
+        "max_ms": 1.8210999987786636,
+        "stdev_ms": 0.34145030636159934,
+        "p95_ms": 1.631999999517575
+      },
+      "signature_verification_ring5": {
+        "mean_ms": 0.8695960001205094,
+        "median_ms": 0.8209000043279957,
+        "min_ms": 0.669599998218473,
+        "max_ms": 1.3966000042273663,
+        "stdev_ms": 0.18395560423560317,
+        "p95_ms": 1.2265000041224994
+      },
+      "signature_generation_ring16": {
+        "mean_ms": 2.6004900009866105,
+        "median_ms": 2.4362000003748108,
+        "min_ms": 2.1459999989019707,
+        "max_ms": 3.7710999968112446,
+        "stdev_ms": 0.5241942963027129,
+        "p95_ms": 3.7710999968112446
+      }
+    },
+    "vote_throughput": {
+      "sequential": {
+        "votes": 10,
+        "duration_s": 68.60024762153625,
+        "votes_per_second": 0.14577206856700348
+      },
+      "concurrent": {
+        "votes": 10,
+        "duration_s": 11.835808992385864,
+        "votes_per_second": 0.8448936618048783
+      }
+    },
+    "tally_performance": {
+      "10_votes": {
+        "duration_ms": 2070.0758999955724,
+        "votes_processed": 10
+      },
+      "50_votes": {
+        "duration_ms": 2087.7811999962432,
+        "votes_processed": 50
+      },
+      "100_votes": {
+        "duration_ms": 2075.60150000063,
+        "votes_processed": 100
+      }
+    },
+    "sybil_resistance_cost": {
+      "small_attack": {
+        "credentials": 10,
+        "monetary_usd": 5500,
+        "time_weeks": 10,
+        "detection_risk": 1.0,
+        "success_probability": 0.05
+      },
+      "medium_attack": {
+        "credentials": 25,
+        "monetary_usd": 13750,
+        "time_weeks": 25,
+        "detection_risk": 0.9,
+        "success_probability": 0.15
+      },
+      "large_attack": {
+        "credentials": 50,
+        "monetary_usd": 27500,
+        "time_weeks": 50,
+        "detection_risk": 0.9,
+        "success_probability": 0.3
+      }
+    },
+    "scalability": {
+      "ring_size_5": {
+        "keygen_ms": 0.9282999963033944,
+        "sign_ms": 2.425099999527447,
+        "verify_ms": 2.253500002552755
+      },
+      "ring_size_10": {
+        "keygen_ms": 0.9332000045105815,
+        "sign_ms": 4.366900000604801,
+        "verify_ms": 3.732600001967512
+      },
+      "ring_size_20": {
+        "keygen_ms": 2.2576000046683475,
+        "sign_ms": 3.4405999977025203,
+        "verify_ms": 3.051600004255306
+      }
+    },
+    "response_times": {
+      "health": {
+        "mean_ms": 2040.3695400007564,
+        "p95_ms": 2055.7331000018166,
+        "max_ms": 2055.7331000018166
+      },
+      "statistics": {
+        "mean_ms": 2062.2697200000403,
+        "p95_ms": 2078.8399999946705,
+        "max_ms": 2078.8399999946705
+      }
+    }
+  },
+  "summary": {
+    "crypto_meets_target": true,
+    "avg_vote_throughput": 0.14577206856700348,
+    "sybil_attack_cost": 5500
+  }
+}

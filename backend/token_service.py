@@ -59,23 +59,36 @@ class TokenService:
             Tuple of (success: bool, error_message: Optional[str])
         """
         if not self.redis_client:
-            await self.init_redis()
+            # Try to initialize, but allow fallback if Redis is unavailable
+            try:
+                await self.init_redis()
+            except Exception as e:
+                self.logger.warning(f"Redis unavailable, falling back to DB-only token consumption: {e}")
+                self.redis_client = None
         
         redis_key = f"token:{token_id}"
         
         try:
-            # STEP 1: Atomic lock using Redis SETNX
-            # This returns True only if key didn't exist (first request wins)
-            lock_acquired = await self.redis_client.set(
-                redis_key,
-                "consumed",
-                nx=True,  # Only set if not exists
-                ex=settings.REDIS_TOKEN_EXPIRY  # Expire after 5 minutes
-            )
-            
-            if not lock_acquired:
-                self.logger.warning(f"Token {token_id} already consumed (Redis lock failed)")
-                return False, "Token already consumed"
+            lock_acquired = True
+            used_redis = False
+            if self.redis_client is not None:
+                # STEP 1: Attempt atomic lock using Redis
+                try:
+                    used_redis = True
+                    lock_acquired = await self.redis_client.set(
+                        redis_key,
+                        "consumed",
+                        nx=True,  # Only set if not exists
+                        ex=settings.REDIS_TOKEN_EXPIRY  # Expire after 5 minutes
+                    )
+                    if not lock_acquired:
+                        self.logger.warning(f"Token {token_id} already consumed (Redis lock failed)")
+                        return False, "Token already consumed"
+                except Exception as e:
+                    # Redis failed; fall back to DB-only flow
+                    self.logger.warning(f"Redis error during token lock, falling back to DB: {e}")
+                    self.redis_client = None
+                    used_redis = False
             
             # STEP 2: Verify token exists in database
             result = await db.execute(
@@ -104,10 +117,20 @@ class TokenService:
                 self.logger.warning(f"Token {token_id} belongs to revoked credential")
                 return False, "Credential has been revoked"
             
-            # STEP 4: Mark token as redeemed in database
+            # STEP 4: Mark token as redeemed in database (DB-atomic)
+            # Use a SELECT ... FOR UPDATE to ensure row-level lock when Redis is unavailable
+            if self.redis_client is None:
+                # Lock the token row to avoid race conditions
+                result_lock = await db.execute(
+                    select(Token).where(Token.token_id == token_id).with_for_update()
+                )
+                token_locked = result_lock.scalar_one_or_none()
+                if not token_locked or token_locked.redeemed:
+                    return False, "Invalid or already redeemed token"
+
             await db.execute(
                 update(Token)
-                .where(Token.token_id == token_id)
+                .where(Token.token_id == token_id, Token.redeemed == False)
                 .values(
                     redeemed=True,
                     redeemed_at=datetime.utcnow()
@@ -124,7 +147,11 @@ class TokenService:
             await db.rollback()
             
             # Release Redis lock on error
-            await self.redis_client.delete(redis_key)
+            if self.redis_client is not None:
+                try:
+                    await self.redis_client.delete(redis_key)
+                except Exception:
+                    pass
             
             return False, f"Token consumption failed: {str(e)}"
     

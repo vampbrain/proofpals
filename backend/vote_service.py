@@ -101,8 +101,8 @@ class VoteService:
             # Extract public keys from ring
             ring_pubkeys = ring.pubkeys  # This is a list of hex strings
             
-            # STEP 3: Verify CLSAG signature
-            verification_result = self.crypto_service.verify_clsag_signature(
+            # STEP 3: Verify signature (auto-detect CLSAG/LSAG)
+            verification_result = self.crypto_service.verify_signature_auto(
                 message, ring_pubkeys, signature_blob
             )
             

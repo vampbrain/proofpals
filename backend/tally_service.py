@@ -100,8 +100,9 @@ class TallyService:
             
             # Populate counts from query results
             for vote_type, count in result:
-                if vote_type in counts:
-                    counts[vote_type] = count
+                key = vote_type if isinstance(vote_type, str) else getattr(vote_type, "value", str(vote_type))
+                if key in counts:
+                    counts[key] = count
             
             total_votes = sum(counts.values())
             
@@ -203,6 +204,13 @@ class TallyService:
             )
             return SubmissionStatus.FLAGGED.value
         
+        # Rule 2a: Mixed signals with escalation present -> escalate
+        if counts["escalate"] > 0 and counts["approve"] > 0 and counts["reject"] > 0:
+            self.logger.info(
+                "Decision: ESCALATED (mixed votes with escalation present)"
+            )
+            return SubmissionStatus.ESCALATED.value
+
         # Rule 2: Approve if more approvals than rejections
         if counts["approve"] > counts["reject"]:
             self.logger.info(

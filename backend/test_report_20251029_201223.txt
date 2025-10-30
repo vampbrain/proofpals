@@ -1,0 +1,87 @@
+ProofPals Test Report
+Generated: 2025-10-29 20:12:23
+
+Test Results:
+
+================================================================================
+5-Person Voting Scenarios: FAILED
+================================================================================
+Traceback (most recent call last):
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 533, in _prepare_and_execute
+    prepared_stmt, attributes = await adapt_connection._prepare(
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 784, in _prepare
+    prepared_stmt = await self._connection.prepare(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\asyncpg\connection.py", line 636, in prepare
+    return await self._prepare(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\asyncpg\connection.py", line 654, in _prepare
+    stmt = await self._get_statement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\asyncpg\connection.py", line 433, in _get_statement
+    statement = await self._protocol.prepare(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg\protocol\protocol.pyx", line 166, in prepare
+asyncpg.exceptions.UndefinedColumnError: column "reputation_score" of relation "reviewers" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\engine\default.py", line 922, in do_execute
+    cursor.execute(statement, parameters)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 591, in execute
+    self._adapt_connection.await_(
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 125, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 185, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 569, in _prepare_and_execute
+    self._handle_exception(error)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 520, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 808, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.ProgrammingError: <class 'asyncpg.exceptions.UndefinedColumnError'>: column "reputation_score" of relation "reviewers" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "E:\proofpals\proofpals\backend\five_person_test.py", line 446, in <module>
+    asyncio.run(main())
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\backend\five_person_test.py", line 432, in main
+    await run_scenario_1()
+  File "E:\proofpals\proofpals\backend\five_person_test.py", line 334, in run_scenario_1
+    reviewer_data = await issue_tokens_to_reviewers(5)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\backend\five_person_test.py", line 187, in issue_tokens_to_reviewers
+    await db.flush()
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 802, in flush
+    await greenlet_spawn(self.sync_session.flush, objects=objects)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 192, in greenlet_spawn
+    result = context.switch(value)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\orm\session.py", line 4312, in flush
+    self._flush(objects)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\orm\session.py", line 4447, in _flush
+    with util.safe_reraise():
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "E:\proofpals\proofpals\pp\Lib\site-packages\s
+
+
+Summary:
+Total: 1, Passed: False, Failed: 1
