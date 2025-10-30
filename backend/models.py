@@ -58,6 +58,7 @@ class Submission(Base):
     __tablename__ = "submissions"
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # Added user association
     genre = Column(String(100), nullable=False, index=True)
     content_ref = Column(String(500), nullable=False)  # URL or hash reference
     submitter_ip_hash = Column(String(64), nullable=False)  # SHA256 hash
@@ -391,8 +392,6 @@ class Revocation(Base):
     
     def __repr__(self):
         return f"<Revocation(id={self.id}, credential_hash='{self.credential_hash[:16]}...', reason='{self.reason}')>"
-
-# ============================================================================
 # Table 10: Users
 # ============================================================================
 
@@ -401,6 +400,7 @@ class User(Base):
     User accounts for authentication
     
     Supports multiple roles: admin, vetter, reviewer, submitter
+    Each user has a unique cryptographic keypair for ring signatures
     """
     __tablename__ = "users"
     
@@ -410,6 +410,12 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    
+    # Cryptographic keys for ring signatures
+    public_key_hex = Column(String(128), unique=True, nullable=True, index=True)  # Ed25519 public key (32 bytes = 64 hex chars)
+    private_key_hex = Column(String(128), nullable=True)  # Ed25519 private key (32 bytes = 64 hex chars) - encrypted in production
+    key_seed_hex = Column(String(64), nullable=True)  # Original seed (32 bytes = 64 hex chars) - encrypted in production
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     

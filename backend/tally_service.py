@@ -157,17 +157,37 @@ class TallyService:
                 )
             )
             
+            # If flagged, log submitter information for admin
+            if decision == SubmissionStatus.FLAGGED.value:
+                self.logger.warning(
+                    f"FLAGGED CONTENT ALERT - Submission {submission_id}: "
+                    f"IP Hash: {submission.submitter_ip_hash}, "
+                    f"MAC Hash: {submission.submitter_mac_hash}, "
+                    f"Genre: {submission.genre}, "
+                    f"Flag votes: {counts['flag']}/{total_votes} ({counts['flag']/total_votes*100:.1f}%)"
+                )
+            
             await db.commit()
             
             # Log audit event
+            audit_details = {
+                "submission_id": submission_id,
+                "decision": decision,
+                "counts": counts,
+                "total_votes": total_votes
+            }
+            
+            # Add submitter info for flagged content
+            if decision == SubmissionStatus.FLAGGED.value:
+                audit_details.update({
+                    "submitter_ip_hash": submission.submitter_ip_hash,
+                    "submitter_mac_hash": submission.submitter_mac_hash,
+                    "flagged_alert": True,
+                    "flag_percentage": counts['flag']/total_votes*100 if total_votes > 0 else 0
+                })
+            
             await self._log_audit(
-                db, "tally_computed", "tally", str(tally_id),
-                {
-                    "submission_id": submission_id,
-                    "decision": decision,
-                    "counts": counts,
-                    "total_votes": total_votes
-                }
+                db, "tally_computed", "tally", str(tally_id), audit_details
             )
             
             return {
@@ -191,44 +211,55 @@ class TallyService:
         """
         Apply decision rules to vote counts
         
+        Decision Rules:
+        1. If count_flag >= 20% of total votes → FLAGGED
+        2. Else if count_escalate has majority → ESCALATED
+        3. Else if count_approve > count_reject → APPROVED
+        4. Else if count_reject > count_approve → REJECTED
+        5. Else (tie) → ESCALATED
+        
         Args:
             counts: Dictionary with vote counts
             
         Returns:
             Decision string (approved/rejected/escalated/flagged)
         """
-        # Rule 1: Urgent flag threshold
-        if counts["flag"] >= settings.URGENT_FLAG_LIMIT:
+        total_votes = sum(counts.values())
+        
+        # Rule 1: Flag threshold (20% of total votes or URGENT_FLAG_LIMIT, whichever is lower)
+        flag_threshold = max(1, min(settings.URGENT_FLAG_LIMIT, int(0.2 * total_votes)))
+        if counts["flag"] >= flag_threshold:
             self.logger.info(
-                f"Decision: FLAGGED (flags={counts['flag']} >= {settings.URGENT_FLAG_LIMIT})"
+                f"Decision: FLAGGED (flags={counts['flag']} >= {flag_threshold} [20% of {total_votes} votes])"
             )
             return SubmissionStatus.FLAGGED.value
         
-        # Rule 2a: Mixed signals with escalation present -> escalate
-        if counts["escalate"] > 0 and counts["approve"] > 0 and counts["reject"] > 0:
+        # Rule 2: If escalation has the most votes (majority)
+        if counts["escalate"] > counts["approve"] and counts["escalate"] > counts["reject"]:
             self.logger.info(
-                "Decision: ESCALATED (mixed votes with escalation present)"
+                f"Decision: ESCALATED (escalate={counts['escalate']} > "
+                f"approve={counts['approve']}, reject={counts['reject']})"
             )
             return SubmissionStatus.ESCALATED.value
-
-        # Rule 2: Approve if more approvals than rejections
+            
+        # Rule 3: Approve if more approvals than rejections (ignoring escalate for approval)
         if counts["approve"] > counts["reject"]:
             self.logger.info(
                 f"Decision: APPROVED (approve={counts['approve']} > reject={counts['reject']})"
             )
             return SubmissionStatus.APPROVED.value
         
-        # Rule 3: Reject if more rejections than approvals
+        # Rule 4: Reject if more rejections than approvals (ignoring escalate for rejection)
         if counts["reject"] > counts["approve"]:
             self.logger.info(
                 f"Decision: REJECTED (reject={counts['reject']} > approve={counts['approve']})"
             )
             return SubmissionStatus.REJECTED.value
         
-        # Rule 4: Tie or edge cases → escalate
+        # Rule 5: Tie between approve/reject → escalate
         self.logger.info(
             f"Decision: ESCALATED (tie or edge case: "
-            f"approve={counts['approve']}, reject={counts['reject']})"
+            f"approve={counts['approve']}, reject={counts['reject']}, escalate={counts['escalate']})"
         )
         return SubmissionStatus.ESCALATED.value
     

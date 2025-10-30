@@ -27,12 +27,18 @@ class TokenService:
     async def init_redis(self):
         """Initialize Redis connection"""
         if self.redis_client is None:
-            self.redis_client = await redis.from_url(
-                settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True
-            )
-            self.logger.info("Redis connection initialized")
+            try:
+                self.redis_client = await redis.from_url(
+                    settings.REDIS_URL,
+                    encoding="utf-8",
+                    decode_responses=True
+                )
+                # Test connection
+                await self.redis_client.ping()
+                self.logger.info("Redis connection initialized")
+            except Exception as e:
+                self.logger.warning(f"Redis connection failed: {e}. Running without Redis (development mode)")
+                self.redis_client = None
     
     async def close_redis(self):
         """Close Redis connection"""
@@ -49,7 +55,7 @@ class TokenService:
         Atomically verify and consume a token
         
         This is the CRITICAL function that prevents double-spending.
-        Uses Redis SETNX for atomic locking.
+        Uses Redis SETNX for atomic locking with fallback to database locking.
         
         Args:
             token_id: The token identifier to consume
@@ -119,7 +125,7 @@ class TokenService:
             
             # STEP 4: Mark token as redeemed in database (DB-atomic)
             # Use a SELECT ... FOR UPDATE to ensure row-level lock when Redis is unavailable
-            if self.redis_client is None:
+            if self.redis_client is None or not used_redis:
                 # Lock the token row to avoid race conditions
                 result_lock = await db.execute(
                     select(Token).where(Token.token_id == token_id).with_for_update()
@@ -147,11 +153,11 @@ class TokenService:
             await db.rollback()
             
             # Release Redis lock on error
-            if self.redis_client is not None:
+            if self.redis_client is not None and used_redis:
                 try:
                     await self.redis_client.delete(redis_key)
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.warning(f"Failed to release Redis lock: {e}")
             
             return False, f"Token consumption failed: {str(e)}"
     

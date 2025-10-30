@@ -265,6 +265,21 @@ class AuthService:
             # Hash password
             hashed_password = self.hash_password(user_data.password)
             
+            # Generate crypto keys for the user
+            try:
+                from crypto_service import get_crypto_service
+                crypto_service = get_crypto_service()
+                if crypto_service:
+                    seed_hex, private_key_hex, public_key_hex = crypto_service.generate_keypair()
+                    self.logger.info(f"Generated crypto keys for user: {user_data.username}")
+                else:
+                    # Fallback if crypto service is not available
+                    seed_hex = private_key_hex = public_key_hex = None
+                    self.logger.warning(f"Crypto service not available, user created without keys: {user_data.username}")
+            except Exception as e:
+                self.logger.error(f"Failed to generate crypto keys for user {user_data.username}: {e}")
+                seed_hex = private_key_hex = public_key_hex = None
+            
             # Create user
             user = UserModel(
                 username=user_data.username,
@@ -272,6 +287,9 @@ class AuthService:
                 password_hash=hashed_password,
                 role=user_data.role,
                 is_active=True,
+                public_key_hex=public_key_hex,
+                private_key_hex=private_key_hex,
+                key_seed_hex=seed_hex,
                 created_at=datetime.utcnow()
             )
             
